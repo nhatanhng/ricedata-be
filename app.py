@@ -67,5 +67,21 @@ def delete_file(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+@app.route('/rename/<filename>', methods=['PUT'])
+def rename_file(filename):
+    try:
+        new_filename = request.json.get('newFilename')
+        if not new_filename:
+            return jsonify({"error": "New filename not provided"}), 400
+        
+        file = Files.query.filter_by(filename=filename).first()
+        if not file:
+            return jsonify({"error": "File not found"}), 404
+
+        file.filename = new_filename
+        db.session.commit()
+        return jsonify({"message": f"File {filename} renamed to {new_filename}"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 if __name__ == "__main__":
     app.run(debug=True)

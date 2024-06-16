@@ -55,5 +55,17 @@ def download(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+@app.route('/delete/<filename>', methods=['DELETE'])
+def delete_file(filename):
+    try:
+        file = Files.query.filter_by(filename=filename).first()
+        if not file:
+            return jsonify({"error": "File not found"}), 404
+        db.session.delete(file)
+        db.session.commit()
+        return jsonify({"message": f"File {filename} deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 if __name__ == "__main__":
     app.run(debug=True)

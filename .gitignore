@@ -1,0 +1,4 @@
+# database
+instance/
+# data related to database content
+uploads/

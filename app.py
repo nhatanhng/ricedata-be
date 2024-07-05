@@ -1,12 +1,14 @@
-# import all libraries
 import logging
 import os
 from flask import Flask, request, send_file, jsonify
-from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from models import db, Files
-from io import BytesIO
+from PIL import Image
+from spectral import open_image
+from models import db, Files
+import io
+import numpy as np
 
 # Initialize Flask and create SQLite database
 app = Flask(__name__)
@@ -96,6 +98,52 @@ def rename_file(filename):
         return jsonify({"message": f"File {filename} renamed to {new_filename}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/hyperspectral/<filename>', methods=['GET'])
+def get_hyperspectral_image(filename):
+    try:
+        logging.debug(f"Request received for hyperspectral image: {filename}")
+
+        # Extract base filename and ensure corresponding .hdr file exists
+        base_filename, ext = os.path.splitext(filename)
+        hdr_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.hdr")
+        img_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.img")
+
+        logging.debug(f"Looking for .hdr file at: {hdr_file}")
+        logging.debug(f"Looking for .img file at: {img_file}")
+
+        if not (os.path.exists(hdr_file) and os.path.exists(img_file)):
+            logging.error(f"File not found: {hdr_file} or {img_file}")
+            return jsonify({"error": "File not found"}), 404
+
+        # Load the hyperspectral image
+        hyperspectral_image = open_image(hdr_file)
+        hyperspectral_data = hyperspectral_image.load()
+
+        # Convert hyperspectral data to an RGB image for visualization
+        rgb_image = hyperspectral_data[:, :, :3]  # Assuming first 3 bands are R, G, B
+
+        # Normalize the image data to 0-255
+        rgb_image = (rgb_image - rgb_image.min()) / (rgb_image.max() - rgb_image.min()) * 255
+        rgb_image = rgb_image.astype(np.uint8)
+
+        # Convert the numpy array to an image
+        pil_img = Image.fromarray(rgb_image)
+
+        # Save image to a bytes buffer
+        img_io = io.BytesIO()
+        pil_img.save(img_io, 'PNG')
+        img_io.seek(0)
+
+        logging.debug(f"Successfully created RGB image for: {filename}")
+
+        # Send the in-memory image file to the client
+        return send_file(img_io, mimetype='image/png')
+
+    except Exception as e:
+        logging.error(f"Error processing hyperspectral image: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

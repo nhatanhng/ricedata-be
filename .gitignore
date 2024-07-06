@@ -2,3 +2,5 @@
 instance/
 # data related to database content
 uploads/
+# image visualization output
+visualized/

@@ -18,12 +18,17 @@ app.config['SECRET_KEY'] = 'nhatanhng'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ricedata.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Directory to save uploaded files
+# Directory to save uploaded files and visualized images
 UPLOAD_FOLDER = 'uploads'
+VISUALIZED_FOLDER = 'visualized'
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+if not os.path.exists(VISUALIZED_FOLDER):
+    os.makedirs(VISUALIZED_FOLDER)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['VISUALIZED_FOLDER'] = VISUALIZED_FOLDER
+
 
 db.init_app(app)
 
@@ -108,6 +113,7 @@ def get_hyperspectral_image(filename):
         base_filename, ext = os.path.splitext(filename)
         hdr_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.hdr")
         img_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.img")
+        visualized_filepath = os.path.join(app.config['VISUALIZED_FOLDER'], f"{base_filename}.png")
 
         logging.debug(f"Looking for .hdr file at: {hdr_file}")
         logging.debug(f"Looking for .img file at: {img_file}")
@@ -116,29 +122,30 @@ def get_hyperspectral_image(filename):
             logging.error(f"File not found: {hdr_file} or {img_file}")
             return jsonify({"error": "File not found"}), 404
 
-        # Load the hyperspectral image
-        hyperspectral_image = open_image(hdr_file)
-        hyperspectral_data = hyperspectral_image.load()
+        # Check if the visualized image already exists
+        if os.path.exists(visualized_filepath):
+            logging.debug(f"Visualized image already exists for: {filename}")
+        else:
+            # Load the hyperspectral image
+            hyperspectral_image = open_image(hdr_file)
+            hyperspectral_data = hyperspectral_image.load()
 
-        # Convert hyperspectral data to an RGB image for visualization
-        rgb_image = hyperspectral_data[:, :, :3]  # Assuming first 3 bands are R, G, B
+            # Convert hyperspectral data to an RGB image for visualization
+            rgb_image = hyperspectral_data[:, :, :3]  # Assuming first 3 bands are R, G, B
 
-        # Normalize the image data to 0-255
-        rgb_image = (rgb_image - rgb_image.min()) / (rgb_image.max() - rgb_image.min()) * 255
-        rgb_image = rgb_image.astype(np.uint8)
+            # Normalize the image data to 0-255
+            rgb_image = (rgb_image - rgb_image.min()) / (rgb_image.max() - rgb_image.min()) * 255
+            rgb_image = rgb_image.astype(np.uint8)
 
-        # Convert the numpy array to an image
-        pil_img = Image.fromarray(rgb_image)
+            # Convert the numpy array to an image
+            pil_img = Image.fromarray(rgb_image)
 
-        # Save image to a bytes buffer
-        img_io = io.BytesIO()
-        pil_img.save(img_io, 'PNG')
-        img_io.seek(0)
+            # Save the image to a file
+            pil_img.save(visualized_filepath)
+            logging.debug(f"Successfully created and saved RGB image for: {filename}")
 
-        logging.debug(f"Successfully created RGB image for: {filename}")
-
-        # Send the in-memory image file to the client
-        return send_file(img_io, mimetype='image/png')
+        # Send the saved image file to the client
+        return send_file(visualized_filepath, mimetype='image/png')
 
     except Exception as e:
         logging.error(f"Error processing hyperspectral image: {str(e)}")

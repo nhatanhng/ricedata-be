@@ -151,6 +151,27 @@ def get_hyperspectral_image(filename):
         logging.error(f"Error processing hyperspectral image: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/visualized_files', methods=['GET'])
+def get_visualized_files():
+    try:
+        visualized_files = os.listdir(app.config['VISUALIZED_FOLDER'])
+        visualized_files = [file for file in visualized_files if file.endswith('.png')]
+        return jsonify(visualized_files), 200
+    except Exception as e:
+        logging.error(f"Error fetching visualized files: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/visualized/<filename>', methods=['GET'])
+def get_visualized_file(filename):
+    try:
+        file_path = os.path.join(app.config['VISUALIZED_FOLDER'], filename)
+        if not os.path.exists(file_path):
+            return jsonify({"error": "File not found"}), 404
+        return send_file(file_path, mimetype='image/png')
+    except Exception as e:
+        logging.error(f"Error serving visualized file: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

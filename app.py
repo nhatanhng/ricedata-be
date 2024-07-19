@@ -3,20 +3,32 @@ import os
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from models import db, Files
+from models import db, Files, Point, VisualizedImage
+from sqlalchemy import text
+
 from PIL import Image
+import spectral as sp
+import spectral.io.envi as envi
+
 from spectral import open_image
 from models import db, Files
-import io
+from npy_append_array import NpyAppendArray
 import numpy as np
 
-# Initialize Flask and create SQLite database
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
 app.config['SECRET_KEY'] = 'nhatanhng'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ricedata.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+db.init_app(app)
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+
+with app.app_context():
+    db.create_all()
 
 # Directory to save uploaded files and visualized images
 UPLOAD_FOLDER = 'uploads'
@@ -28,15 +40,6 @@ if not os.path.exists(VISUALIZED_FOLDER):
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['VISUALIZED_FOLDER'] = VISUALIZED_FOLDER
-
-
-db.init_app(app)
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-
-with app.app_context():
-    db.create_all()
 
 @app.route('/uploads/images', methods=['POST'])
 def upload():
@@ -77,6 +80,7 @@ def delete_file(filename):
         if not file:
             return jsonify({"error": "File not found"}), 404
         os.remove(file.filepath)
+        Point.query.filter_by(filename=filename).delete()  # Clear points associated with the file
         db.session.delete(file)
         db.session.commit()
         return jsonify({"message": f"File {filename} deleted successfully"}), 200
@@ -122,9 +126,16 @@ def get_hyperspectral_image(filename):
             logging.error(f"File not found: {hdr_file} or {img_file}")
             return jsonify({"error": "File not found"}), 404
 
-        # Check if the visualized image already exists
-        if os.path.exists(visualized_filepath):
+        # Check if the visualized image already exists in the database
+        file = Files.query.filter_by(filename=filename).first()
+        if not file:
+            logging.error(f"File record not found: {filename}")
+            return jsonify({"error": "File record not found"}), 404
+        
+        visualized_image = VisualizedImage.query.filter_by(file_id=file.id).first()
+        if visualized_image:
             logging.debug(f"Visualized image already exists for: {filename}")
+            visualized_filepath = visualized_image.visualized_filepath
         else:
             # Load the hyperspectral image
             hyperspectral_image = open_image(hdr_file)
@@ -144,6 +155,15 @@ def get_hyperspectral_image(filename):
             pil_img.save(visualized_filepath)
             logging.debug(f"Successfully created and saved RGB image for: {filename}")
 
+            # Save visualized image information to the database
+            new_visualized_image = VisualizedImage(
+                file_id=file.id,
+                visualized_filename=f"{base_filename}.png",
+                visualized_filepath=visualized_filepath
+            )
+            db.session.add(new_visualized_image)
+            db.session.commit()
+
         # Send the saved image file to the client
         return send_file(visualized_filepath, mimetype='image/png')
 
@@ -154,9 +174,9 @@ def get_hyperspectral_image(filename):
 @app.route('/visualized_files', methods=['GET'])
 def get_visualized_files():
     try:
-        visualized_files = os.listdir(app.config['VISUALIZED_FOLDER'])
-        visualized_files = [file for file in visualized_files if file.endswith('.png')]
-        return jsonify(visualized_files), 200
+        visualized_images = VisualizedImage.query.all()
+        visualized_filenames = [img.visualized_filename for img in visualized_images]
+        return jsonify(visualized_filenames), 200
     except Exception as e:
         logging.error(f"Error fetching visualized files: {str(e)}")
         return jsonify({"error": str(e)}), 500
@@ -170,6 +190,58 @@ def get_visualized_file(filename):
         return send_file(file_path, mimetype='image/png')
     except Exception as e:
         logging.error(f"Error serving visualized file: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/save_points/<filename>', methods=['POST'])
+def save_points(filename):
+    try:
+        file = Files.query.filter_by(filename=filename).first()
+        if not file:
+            return jsonify({"error": "File record not found"}), 404
+
+        points = request.json.get('points', [])
+        
+        Point.query.filter_by(file_id=file.id).delete()
+
+        for point in points:
+            new_point = Point(
+                file_id=file.id,
+                x=point['x'],
+                y=point['y']
+            )
+            db.session.add(new_point)
+
+        db.session.commit()
+        return jsonify({"message": "Points saved successfully"}), 200
+
+    except Exception as e:
+        logging.error(f"Error saving points: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/get_points/<filename>', methods=['GET'])
+def get_points(filename):
+    try:
+        file = Files.query.filter_by(filename=filename).first()
+        if not file:
+            return jsonify({"error": "File record not found"}), 404
+        points = Point.query.filter_by(file_id=file.id).all()
+        return jsonify([{'x': point.x, 'y': point.y} for point in points]), 200
+    except Exception as e:
+        logging.error(f"Error fetching points: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/delete_point/<int:point_id>', methods=['DELETE'])
+def delete_point(point_id):
+    try:
+        point = Point.query.get(point_id)
+        if not point:
+            return jsonify({"error": "Point not found"}), 404
+
+        db.session.delete(point)
+        db.session.commit()
+        return jsonify({"message": "Point deleted successfully"}), 200
+    except Exception as e:
+        logging.error(f"Error deleting point: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 

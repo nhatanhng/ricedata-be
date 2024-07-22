@@ -38,6 +38,37 @@ logging.basicConfig(level=logging.DEBUG)
 with app.app_context():
     db.create_all()
 
+def npy_converter(img):
+    # store the image with its name and npy extension and save it in ./uploads/npy
+    npy_filename = "./npy/" + img.filename.split('.')[0] + '.npy'
+    try:
+        with NpyAppendArray(npy_filename) as npy:
+            for i in range(122):
+                npy.append(img[i])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def hsi_to_rgb(hsi_img_name, red, green, blue):
+    # open the image with the name in npy folder
+    hsi_img = np.load("./npy/" + hsi_img_name + '.npy')
+
+    red_band = hsi_img[red].astype(np.uint8)
+    green_band = hsi_img[green].astype(np.uint8)
+    blue_band = hsi_img[blue].astype(np.uint8)
+
+    red_normalized = np.where(red_band > 50, 50, red_band)
+    green_normalized = np.where(green_band > 50, 50, green_band)
+    blue_normalized = np.where(blue_band > 50, 50, blue_band)
+
+    dr_main_image = np.zeros((red_normalized.shape[0], red_normalized.shape[1], 3), dtype=np.uint8)
+    dr_main_image[:, :, 0] = red_normalized
+    dr_main_image[:, :, 1] = green_normalized
+    dr_main_image[:, :, 2] = blue_normalized
+
+    dr_main_image = (255 * (1.0 / dr_main_image.max() * (dr_main_image - dr_main_image.min()))).astype(np.uint8)
+
+    return dr_main_image
+    
 @app.route('/uploads/images', methods=['POST'])
 def upload():
     if request.method == 'POST':
@@ -50,6 +81,7 @@ def upload():
             upload = Files(filename=filename, filepath=filepath)
             db.session.add(upload)
             db.session.commit()
+            npy_converter(file)
             return f'Uploaded: {filename}'
         else:
             return 'No file uploaded', 400

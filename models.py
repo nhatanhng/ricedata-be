@@ -7,7 +7,7 @@ class Files(db.Model):
     id = db.Column(db.Integer, primary_key=True, unique=True, nullable=False)
     filename = db.Column(db.String(255), nullable=False)
     filepath = db.Column(db.String(200), nullable=False) 
-    points = db.relationship('Point', backref='file', lazy=True)
+    points = db.relationship('Point', backref='files', lazy=True)
     visualized_images = db.relationship('VisualizedImage', backref='files', lazy=True)
 
 class Point(db.Model):

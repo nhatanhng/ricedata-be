@@ -15,6 +15,8 @@ from models import db, Files
 from npy_append_array import NpyAppendArray
 import numpy as np
 
+from sqlalchemy.exc import SQLAlchemyError
+
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
 
@@ -41,7 +43,7 @@ if not os.path.exists(VISUALIZED_FOLDER):
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['VISUALIZED_FOLDER'] = VISUALIZED_FOLDER
 
-@app.route('/uploads/images', methods=['POST'])
+@app.route('/uploads/files', methods=['POST'])
 def upload():
     if request.method == 'POST':
         file = request.files['file']
@@ -79,10 +81,15 @@ def delete_file(filename):
         file = Files.query.filter_by(filename=filename).first()
         if not file:
             return jsonify({"error": "File not found"}), 404
-        os.remove(file.filepath)
-        Point.query.filter_by(filename=filename).delete()  # Clear points associated with the file
+        
+        # Only delete points if the file has a .img extension
+        if filename.endswith('.img'):
+            Point.query.filter_by(file_id=file.id).delete()  # Clear points associated with the file
+            VisualizedImage.query.filter_by(file_id=file.id).delete()  # Clear visualized images associated with the file
+        
         db.session.delete(file)
         db.session.commit()
+        os.remove(file.filepath)
         return jsonify({"message": f"File {filename} deleted successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

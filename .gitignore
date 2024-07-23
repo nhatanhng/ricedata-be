@@ -4,3 +4,4 @@ instance/
 uploads/
 # image visualization output
 visualized/
+/_pycache_

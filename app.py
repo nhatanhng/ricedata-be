@@ -32,7 +32,6 @@ logging.basicConfig(level=logging.DEBUG)
 with app.app_context():
     db.create_all()
 
-# Directory to save uploaded files and visualized images
 UPLOAD_FOLDER = 'uploads'
 VISUALIZED_FOLDER = 'visualized'
 UPLOAD_FOLDER_NPY = 'uploads/npy'
@@ -62,7 +61,6 @@ def npy_converter(img):
         return jsonify({"error": str(e)}), 500
 
 def hsi_to_rgb(hsi_img_name, red, green, blue):
-    # open the image with the name in npy folder
     hsi_img = np.load(os.path.join(UPLOAD_FOLDER_NPY, hsi_img_name + '.npy'))
 
     red_band = hsi_img[red].astype(np.uint8)
@@ -127,11 +125,6 @@ def delete_file(filename):
         if not file:
             return jsonify({"error": "File not found"}), 404
         
-        # Only delete points if the file has a .img extension
-        # if filename.endswith('.img', '.hdr'):
-        #     Point.query.filter_by(file_id=file.id).delete()  # Clear points associated with the file
-        #     VisualizedImage.query.filter_by(file_id=file.id).delete()  # Clear visualized images associated with the file
-        
         db.session.delete(file)
         db.session.commit()
         os.remove(file.filepath)
@@ -166,17 +159,14 @@ def get_hyperspectral_image(filename):
         img_name = filename.split('.')[0]
         img_path = os.path.join(VISUALIZED_FOLDER, img_name + '.png')
         
-        # Check if the image already exists
         if os.path.exists(img_path):
             logging.info(f"Image {img_name}.png already exists. Serving the file.")
             return send_file(img_path, mimetype='image/png')
 
         else:
-            # If not exists, convert and save the image
             img_path = hsi_to_rgb(img_name, 55, 28, 12)
             logging.info(f"Image {img_name}.png created and saved.")
 
-            # Save the visualized image info in the database
             file_record = Files.query.filter_by(filename=filename).first()
             if file_record:
                 visualized_image = VisualizedImage(
@@ -192,70 +182,6 @@ def get_hyperspectral_image(filename):
     except Exception as e:
         logging.error(f"Error processing hyperspectral image: {str(e)}")
         return jsonify({"error": str(e)}), 500
-        
-
-# @app.route('/hyperspectral/<filename>', methods=['GET'])
-# def get_hyperspectral_image(filename):
-#     try:
-#         logging.debug(f"Request received for hyperspectral image: {filename}")
-
-#         # Extract base filename and ensure corresponding .hdr file exists
-#         base_filename, ext = os.path.splitext(filename)
-#         hdr_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.hdr")
-#         img_file = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.img")
-#         visualized_filepath = os.path.join(app.config['VISUALIZED_FOLDER'], f"{base_filename}.png")
-
-#         logging.debug(f"Looking for .hdr file at: {hdr_file}")
-#         logging.debug(f"Looking for .img file at: {img_file}")
-
-#         if not (os.path.exists(hdr_file) and os.path.exists(img_file)):
-#             logging.error(f"File not found: {hdr_file} or {img_file}")
-#             return jsonify({"error": "File not found"}), 404
-
-#         # Check if the visualized image already exists in the database
-#         file = Files.query.filter_by(filename=filename).first()
-#         if not file:
-#             logging.error(f"File record not found: {filename}")
-#             return jsonify({"error": "File record not found"}), 404
-        
-#         visualized_image = VisualizedImage.query.filter_by(file_id=file.id).first()
-#         if visualized_image:
-#             logging.debug(f"Visualized image already exists for: {filename}")
-#             visualized_filepath = visualized_image.visualized_filepath
-#         else:
-#             # Load the hyperspectral image
-#             hyperspectral_image = open_image(hdr_file)
-#             hyperspectral_data = hyperspectral_image.load()
-
-#             # Convert hyperspectral data to an RGB image for visualization
-#             rgb_image = hyperspectral_data[:, :, :3]  # Assuming first 3 bands are R, G, B
-
-#             # Normalize the image data to 0-255
-#             rgb_image = (rgb_image - rgb_image.min()) / (rgb_image.max() - rgb_image.min()) * 255
-#             rgb_image = rgb_image.astype(np.uint8)
-
-#             # Convert the numpy array to an image
-#             pil_img = Image.fromarray(rgb_image)
-
-#             # Save the image to a file
-#             pil_img.save(visualized_filepath)
-#             logging.debug(f"Successfully created and saved RGB image for: {filename}")
-
-#             # Save visualized image information to the database
-#             new_visualized_image = VisualizedImage(
-#                 file_id=file.id,
-#                 visualized_filename=f"{base_filename}.png",
-#                 visualized_filepath=visualized_filepath
-#             )
-#             db.session.add(new_visualized_image)
-#             db.session.commit()
-
-#         # Send the saved image file to the client
-#         return send_file(visualized_filepath, mimetype='image/png')
-
-#     except Exception as e:
-#         logging.error(f"Error processing hyperspectral image: {str(e)}")
-#         return jsonify({"error": str(e)}), 500
 
 @app.route('/visualized_files', methods=['GET'])
 def get_visualized_files():

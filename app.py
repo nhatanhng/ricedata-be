@@ -3,8 +3,7 @@ import os
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from models import db, Files, Point, VisualizedImage
-from sqlalchemy import text
+from models import db, Files, Point, VisualizedImage, RecommendChannel
 
 from PIL import Image
 import spectral as sp
@@ -15,7 +14,6 @@ from models import db, Files
 from npy_append_array import NpyAppendArray
 import numpy as np
 
-from sqlalchemy.exc import SQLAlchemyError
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -26,7 +24,6 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
-# Configure logging
 logging.basicConfig(level=logging.DEBUG)
 
 with app.app_context():
@@ -35,6 +32,7 @@ with app.app_context():
 UPLOAD_FOLDER = 'uploads'
 VISUALIZED_FOLDER = 'visualized'
 UPLOAD_FOLDER_NPY = 'uploads/npy'
+
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 if not os.path.exists(VISUALIZED_FOLDER):
@@ -52,11 +50,47 @@ def npy_converter(img):
     npy_filename = "./uploads/npy/" + img.filename.split('.')[0] + '.npy'
     hdr_name = "./uploads/" + img.filename.split('.')[0] + '.hdr'
     hdr_img = sp.envi.open(hdr_name)
+    average = []
     try:
         with NpyAppendArray(npy_filename) as npy:
             for i in range(122):
                 channel = np.expand_dims(hdr_img.read_band(i), 0)
+                average.append(np.average(channel))
                 npy.append(channel)
+
+        blue = np.max(average[0:15])
+        green = np.max(average[16:40])
+        red = np.max(average[41:85])
+        # nf = np.max(average[86:121])
+
+        file_record = Files.query.filter_by(filename=img.filename).first()
+        if not file_record:
+            raise ValueError("File not found in the database.")
+
+        recommend_channel = RecommendChannel.query.filter_by(file_id=file_record.id).first()
+
+        if recommend_channel:
+            recommend_channel.R = red
+            recommend_channel.G = green
+            recommend_channel.B = blue
+            # recommend_channel.nf = nf
+            db.session.commit()
+        else:
+            recommend_channel = RecommendChannel(
+                file_id=file_record.id,
+                R=red,
+                G=green,
+                B=blue,
+                # nf=nf
+            )
+            db.session.add(recommend_channel)
+            db.session.commit()
+        
+        db.session.add(recommend_channel)
+        db.session.commit()
+
+        return jsonify({"message": "File processed and data saved successfully"}), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -92,12 +126,17 @@ def upload():
         if file:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file_extension = filename.split('.')[-1]
             file.save(filepath)
 
-            upload = Files(filename=filename, filepath=filepath)
+            upload = Files(filename=filename, filepath=filepath, extension=file_extension)
             db.session.add(upload)
             db.session.commit()
-            npy_converter(file)
+
+            file_record = Files.query.filter_by(filename=filename).first()
+            if file_record.extension == 'hdr':
+                npy_converter(file)
+
             return f'Uploaded: {filename}'
         else:
             return 'No file uploaded', 400
@@ -152,36 +191,66 @@ def rename_file(filename):
         return jsonify({"message": f"File {filename} renamed to {new_filename}"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-@app.route('/hyperspectral/<filename>', methods=['GET'])
-def get_hyperspectral_image(filename):
+    
+@app.route('/hyperspectral', methods=['POST'])
+def visualize_HSI():
     try:
+        data = request.json
+        filename = data['filename']
+        r = data['R']
+        g = data['G']
+        b = data['B'] 
+        # nf = data['nf']
+        
         img_name = filename.split('.')[0]
         img_path = os.path.join(VISUALIZED_FOLDER, img_name + '.png')
         
-        if os.path.exists(img_path):
-            logging.info(f"Image {img_name}.png already exists. Serving the file.")
-            return send_file(img_path, mimetype='image/png')
-
-        else:
-            img_path = hsi_to_rgb(img_name, 55, 28, 12)
-            logging.info(f"Image {img_name}.png created and saved.")
-
-            file_record = Files.query.filter_by(filename=filename).first()
-            if file_record:
+        img_path = hsi_to_rgb(img_name, r, g, b)
+        logging.info(f"Image {img_name}.png created and saved with R={r}, G={g}, B={b}.")
+        
+        file_record = Files.query.filter_by(filename=filename).first()
+        if file_record:
+            visualized_image = VisualizedImage.query.filter_by(file_id=file_record.id).first()
+            if visualized_image:
+                visualized_image.visualized_filepath = img_path
+            else:
                 visualized_image = VisualizedImage(
                     file_id=file_record.id,
                     visualized_filename=img_name + '.png',
                     visualized_filepath=img_path
                 )
                 db.session.add(visualized_image)
-                db.session.commit()
+            db.session.commit()
 
         return send_file(img_path, mimetype='image/png')
 
     except Exception as e:
-        logging.error(f"Error processing hyperspectral image: {str(e)}")
+        logging.error(f"Error visualizing hyperspectral image: {str(e)}")
         return jsonify({"error": str(e)}), 500
+    
+@app.route('/recommend_channel/<filename>', methods=['GET'])
+def get_recommend_channel(filename):
+    print(f"Received request for filename: {filename}")
+
+    file_record = Files.query.filter_by(filename=filename).first()
+    if not file_record:
+        print(f"File record not found for filename: {filename}")
+        return jsonify({"error": "File not found"}), 404
+
+    recommend_channel = RecommendChannel.query.filter_by(file_id=file_record.id).first()
+    if not recommend_channel:
+        print(f"Recommendation channel not found for filename: {file_record.filename}")
+        return jsonify({"error": "Recommendation channel not found"}), 404
+
+    print(f"Recommendation channel found: R={recommend_channel.R}, G={recommend_channel.G}, B={recommend_channel.B}")
+
+    return jsonify({
+        "R": recommend_channel.R,
+        "G": recommend_channel.G,
+        "B": recommend_channel.B
+    })  
+
+#             img_path = hsi_to_rgb(img_name, 55, 28, 12)
 
 @app.route('/visualized_files', methods=['GET'])
 def get_visualized_files():
@@ -255,7 +324,6 @@ def delete_point(point_id):
     except Exception as e:
         logging.error(f"Error deleting point: {str(e)}")
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(debug=True)

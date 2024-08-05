@@ -164,9 +164,22 @@ def delete_file(filename):
         if not file:
             return jsonify({"error": "File not found"}), 404
         
+        points = Point.query.filter_by(file_id=file.id).all()
+        for point in points:
+            db.session.delete(point)
+        
+        visualized_images = VisualizedImage.query.filter_by(file_id=file.id).all()
+        for visualized_image in visualized_images:
+            db.session.delete(visualized_image)
+        
+        recommend_channels = RecommendChannel.query.filter_by(file_id=file.id).all()
+        for recommend_channel in recommend_channels:
+            db.session.delete(recommend_channel)
+        
         db.session.delete(file)
         db.session.commit()
         os.remove(file.filepath)
+        
         return jsonify({"message": f"File {filename} deleted successfully"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

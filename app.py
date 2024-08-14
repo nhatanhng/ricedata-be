@@ -1,5 +1,6 @@
 #             img_path = hsi_to_rgb(img_name, 55, 28, 12)
 import logging
+import traceback
 import os
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
@@ -23,6 +24,8 @@ CORS(app, supports_credentials=True)
 app.config['SECRET_KEY'] = 'nhatanhng'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ricedata.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['ALLOWED_EXTENSIONS'] = {'csv'}
+
 
 db.init_app(app)
 
@@ -34,6 +37,8 @@ with app.app_context():
 UPLOAD_FOLDER = 'uploads'
 VISUALIZED_FOLDER = 'visualized'
 UPLOAD_FOLDER_NPY = 'uploads/npy'
+UPLOAD_CSV_FOLDER = 'uploads/csv_mapping_points'
+
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -45,7 +50,11 @@ if not os.path.exists(UPLOAD_FOLDER_NPY):
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['VISUALIZED_FOLDER'] = VISUALIZED_FOLDER
 app.config['UPLOAD_FOLDER_NPY'] = UPLOAD_FOLDER_NPY
+app.config['UPLOAD_CSV_FOLDER'] = UPLOAD_CSV_FOLDER
 
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def npy_converter(img):
     # store the image with its name and npy extension and save it in ./uploads/npy

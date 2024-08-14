@@ -129,6 +129,36 @@ def hsi_to_rgb(hsi_img_name, red, green, blue):
 
     return output_path
 
+def calculate_and_store_pixel_coordinates():
+    # Retrieve the BASE point from the StatisticalData table
+    base_point = StatisticalData.query.filter_by(point_id='BASE').first()
+    
+    if not base_point:
+        print("BASE point not found.")
+        return
+    
+    # Iterate over all points except the BASE point
+    all_points = StatisticalData.query.filter(StatisticalData.point_id != 'BASE').all()
+    
+    for point in all_points:
+        # Calculate the pixel coordinates relative to the BASE point
+        pixel_x = abs(point.x - base_point.x) / 3779.5275590551
+        pixel_y = abs(point.y - base_point.y) / 3779.5275590551
+        
+        # Create a new Points entry
+        new_point = Points(
+            file_id=point.file_id,
+            point_id=point.point_id,
+            x=pixel_x,
+            y=pixel_y
+        )
+        
+        # Add the new point to the session
+        db.session.add(new_point)
+    
+    # Commit all changes to the database
+    db.session.commit()
+    print("Pixel coordinates calculated, converted to pixel value, and stored successfully.")
 
 @app.route('/uploads/files', methods=['POST'])
 def upload():

@@ -1,7 +1,10 @@
 # database
-instance/
+
 # data related to database content
 uploads/
 # image visualization output
 visualized/
 /_pycache_
+/received_data
+/ReflectanceDataS2T2
+/sed.ipynb

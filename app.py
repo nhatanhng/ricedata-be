@@ -1,9 +1,9 @@
+#             img_path = hsi_to_rgb(img_name, 55, 28, 12)
 import logging
 import os
 from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from models import db, Files, Point, VisualizedImage, RecommendChannel
 from models import db, Files, Points, VisualizedImages, RecommendChannels, StatisticalData
 import pandas as pd
 from datetime import datetime
@@ -13,7 +13,6 @@ import spectral as sp
 import spectral.io.envi as envi
 
 from spectral import open_image
-from models import db, Files
 from npy_append_array import NpyAppendArray
 import numpy as np
 
@@ -61,16 +60,16 @@ def npy_converter(img):
                 average.append(np.average(channel))
                 npy.append(channel)
 
-        blue = np.max(average[0:15])
-        green = np.max(average[16:40])
-        red = np.max(average[41:85])
+        blue = round(np.max(average[0:15]))
+        green = round(np.max(average[16:40]))
+        red = round(np.max(average[41:85]))
         # nf = np.max(average[86:121])
 
         file_record = Files.query.filter_by(filename=img.filename).first()
         if not file_record:
             raise ValueError("File not found in the database.")
 
-        recommend_channel = RecommendChannel.query.filter_by(file_id=file_record.id).first()
+        recommend_channel = RecommendChannels.query.filter_by(file_id=file_record.id).first()
 
         if recommend_channel:
             recommend_channel.R = red
@@ -79,7 +78,7 @@ def npy_converter(img):
             # recommend_channel.nf = nf
             db.session.commit()
         else:
-            recommend_channel = RecommendChannel(
+            recommend_channel = RecommendChannels(
                 file_id=file_record.id,
                 R=red,
                 G=green,
@@ -235,11 +234,11 @@ def visualize_HSI():
         
         file_record = Files.query.filter_by(filename=filename).first()
         if file_record:
-            visualized_image = VisualizedImage.query.filter_by(file_id=file_record.id).first()
+            visualized_image = VisualizedImages.query.filter_by(file_id=file_record.id).first()
             if visualized_image:
                 visualized_image.visualized_filepath = img_path
             else:
-                visualized_image = VisualizedImage(
+                visualized_image = VisualizedImages(
                     file_id=file_record.id,
                     visualized_filename=img_name + '.png',
                     visualized_filepath=img_path
@@ -262,7 +261,7 @@ def get_recommend_channel(filename):
         print(f"File record not found for filename: {filename}")
         return jsonify({"error": "File not found"}), 404
 
-    recommend_channel = RecommendChannel.query.filter_by(file_id=file_record.id).first()
+    recommend_channel = RecommendChannels.query.filter_by(file_id=file_record.id).first()
     if not recommend_channel:
         print(f"Recommendation channel not found for filename: {file_record.filename}")
         return jsonify({"error": "Recommendation channel not found"}), 404
@@ -275,12 +274,11 @@ def get_recommend_channel(filename):
         "B": recommend_channel.B
     })  
 
-#             img_path = hsi_to_rgb(img_name, 55, 28, 12)
 
 @app.route('/visualized_files', methods=['GET'])
 def get_visualized_files():
     try:
-        visualized_images = VisualizedImage.query.all()
+        visualized_images = VisualizedImages.query.all()
         visualized_filenames = [img.visualized_filename for img in visualized_images]
         return jsonify(visualized_filenames), 200
     except Exception as e:
@@ -298,31 +296,31 @@ def get_visualized_file(filename):
         logging.error(f"Error serving visualized file: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/save_points/<filename>', methods=['POST'])
-def save_points(filename):
-    try:
-        file = Files.query.filter_by(filename=filename).first()
-        if not file:
-            return jsonify({"error": "File record not found"}), 404
+# @app.route('/save_points/<filename>', methods=['POST'])
+# def save_points(filename):
+#     try:
+#         file = Files.query.filter_by(filename=filename).first()
+#         if not file:
+#             return jsonify({"error": "File record not found"}), 404
 
-        points = request.json.get('points', [])
+#         points = request.json.get('points', [])
         
-        Point.query.filter_by(file_id=file.id).delete()
+#         Point.query.filter_by(file_id=file.id).delete()
 
-        for point in points:
-            new_point = Point(
-                file_id=file.id,
-                x=point['x'],
-                y=point['y']
-            )
-            db.session.add(new_point)
+#         for point in points:
+#             new_point = Point(
+#                 file_id=file.id,
+#                 x=point['x'],
+#                 y=point['y']
+#             )
+#             db.session.add(new_point)
 
-        db.session.commit()
-        return jsonify({"message": "Points saved successfully"}), 200
+#         db.session.commit()
+#         return jsonify({"message": "Points saved successfully"}), 200
 
-    except Exception as e:
-        logging.error(f"Error saving points: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+#     except Exception as e:
+#         logging.error(f"Error saving points: {str(e)}")
+#         return jsonify({"error": str(e)}), 500
 
 @app.route('/get_points/<filename>', methods=['GET'])
 def get_points(filename):
@@ -330,25 +328,98 @@ def get_points(filename):
         file = Files.query.filter_by(filename=filename).first()
         if not file:
             return jsonify({"error": "File record not found"}), 404
-        points = Point.query.filter_by(file_id=file.id).all()
+        points = Points.query.filter_by(file_id=file.id).all()
         return jsonify([{'x': point.x, 'y': point.y} for point in points]), 200
     except Exception as e:
         logging.error(f"Error fetching points: {str(e)}")
         return jsonify({"error": str(e)}), 500
     
-@app.route('/delete_point/<int:point_id>', methods=['DELETE'])
-def delete_point(point_id):
-    try:
-        point = Point.query.get(point_id)
-        if not point:
-            return jsonify({"error": "Point not found"}), 404
+# @app.route('/delete_point/<int:point_id>', methods=['DELETE'])
+# def delete_point(point_id):
+#     try:
+#         point = Point.query.get(point_id)
+#         if not point:
+#             return jsonify({"error": "Point not found"}), 404
 
-        db.session.delete(point)
-        db.session.commit()
-        return jsonify({"message": "Point deleted successfully"}), 200
-    except Exception as e:
-        logging.error(f"Error deleting point: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+#         db.session.delete(point)
+#         db.session.commit()
+#         return jsonify({"message": "Point deleted successfully"}), 200
+#     except Exception as e:
+#         logging.error(f"Error deleting point: {str(e)}")
+#         return jsonify({"error": str(e)}), 500
+
+@app.route('/upload_csv', methods=['POST'])
+def upload_csv():
+    if 'file' not in request.files or 'image_id' not in request.form:
+        return jsonify({"error": "No file or image_id provided"}), 400
+    
+    file = request.files['file']
+    image_id = request.form['image_id']
+
+    # Print out the image_id
+    print(f"Received image_id: {image_id}")
+
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_CSV_FOLDER'], filename)
+        file.save(file_path)
+        logging.info(f"{file.filename} uploaded succesfully")
+        
+        # Process the CSV file
+        try:
+            data = pd.read_csv(file_path,delimiter=';')
+            # logging.info(f"Accessed {file.filename}, CSV columns: {data.columns.tolist()}")
+            
+            # # Replace commas with dots in the relevant columns
+            # for column in ['X(m)', 'Y(m)', 'H(m)_EGM96', 'P_conc', 'K_conc', 'N_conc', 'Chlorophyll_a']:
+            #     data[column] = data[column].str.replace(',', '.').astype(float)
+
+            # Convert date strings to Python date objects
+            data['date'] = pd.to_datetime(data['date'], format='%d/%m/%Y').dt.date
+
+            # Assuming the CSV has columns matching the fields in StatisticalData
+            for index, row in data.iterrows():
+                point_id = row['ID']
+                # logging.info(f"Processing row {index} with point_id {point_id}")
+
+                # # Check if the entry already exists
+                # existing_entry = StatisticalData.query.filter_by(image_id=image_id, point_id=point_id).first()
+
+                # if existing_entry:
+                #     # Skip the entry if it already exists
+                #     continue
+                
+                # Insert new entry
+                new_entry = StatisticalData(
+                    image_id=image_id,
+                    point_id=point_id,
+                    x=row.get('X(m)'),
+                    y=row.get('Y(m)'),
+                    h=row.get('H(m)_EGM96'),
+                    replicate=row.get('replicate'),
+                    sub_replicate=row.get('sub_replicate'),
+                    chlorophyll=row.get('chlorophyll'),
+                    rice_height=row.get('rice_height'),
+                    spectral_num=row.get('spectral_num'),
+                    digesion=row.get('digesion'),
+                    p_conc=row.get('P_conc'),
+                    k_conc=row.get('K_conc'),
+                    n_conc=row.get('N_conc'),
+                    chlorophyll_a=row.get('Chlorophyll_a'),
+                    date=row['date']
+                )
+                db.session.add(new_entry)
+
+            db.session.commit()
+            return jsonify({"message": "CSV data uploaded and added successfully."}), 200
+
+        except Exception as e:
+            logging.error(f"Error processing CSV: {e}")
+            logging.error(traceback.format_exc())
+            return jsonify({"error": "An error occurred while processing the CSV file."}), 500
+
+    return jsonify({"error": "Invalid file format"}), 400
 
 if __name__ == "__main__":
     app.run(debug=True)

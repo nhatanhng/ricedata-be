@@ -4,6 +4,9 @@ from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from models import db, Files, Point, VisualizedImage, RecommendChannel
+from models import db, Files, Points, VisualizedImages, RecommendChannels, StatisticalData
+import pandas as pd
+from datetime import datetime
 
 from PIL import Image
 import spectral as sp
@@ -164,25 +167,34 @@ def delete_file(filename):
         if not file:
             return jsonify({"error": "File not found"}), 404
         
-        points = Point.query.filter_by(file_id=file.id).all()
-        for point in points:
-            db.session.delete(point)
-        
-        visualized_images = VisualizedImage.query.filter_by(file_id=file.id).all()
+        # points = Points.query.filter_by(file_id=file.id).all()
+        # for point in points:
+        #     db.session.delete(point)
+
+        # fix the deletion of visualizedimages since there are foreign key for visualizedimages.id
+        visualized_images = VisualizedImages.query.filter_by(file_id=file.id).all()
         for visualized_image in visualized_images:
             db.session.delete(visualized_image)
         
-        recommend_channels = RecommendChannel.query.filter_by(file_id=file.id).all()
+        recommend_channels = RecommendChannels.query.filter_by(file_id=file.id).all()
         for recommend_channel in recommend_channels:
             db.session.delete(recommend_channel)
         
         db.session.delete(file)
         db.session.commit()
-        os.remove(file.filepath)
+        # os.remove(file.filepath)
+        # Check if the file exists before trying to delete it
+        if os.path.exists(file.filepath):
+            os.remove(file.filepath)
+        else:
+            return jsonify({"message": f"File {filename} deleted from database, but file was not found on disk"}), 200
         
         return jsonify({"message": f"File {filename} deleted successfully"}), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        # Log the exception for debugging purposes
+        app.logger.error(f"Error deleting file {filename}: {str(e)}")
+        return jsonify({"error": str(e)}), 500        
+
 
 @app.route('/rename/<filename>', methods=['PUT'])
 def rename_file(filename):

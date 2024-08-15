@@ -209,7 +209,6 @@ def delete_file(filename):
         # for point in points:
         #     db.session.delete(point)
 
-        # fix the deletion of visualizedimages since there are foreign key for visualizedimages.id
         visualized_images = VisualizedImages.query.filter_by(file_id=file.id).all()
         for visualized_image in visualized_images:
             db.session.delete(visualized_image)
@@ -393,11 +392,21 @@ def upload_csv():
         return jsonify({"error": "No file or image_id provided"}), 400
     
     file = request.files['file']
-    image_id = request.form['image_id']
+    image_filename = request.form['image_id']  
 
-    # Print out the image_id
-    print(f"Received image_id: {image_id}")
+    # print(f"Received image filename: {image_filename}")
 
+    # Replace .img extension with .png
+    if image_filename.endswith('.img'):
+        image_filename = image_filename.replace('.img', '.png')
+
+    visualized_image = VisualizedImages.query.filter_by(visualized_filename=image_filename).first()
+
+    if not visualized_image:
+        return jsonify({"error": "Visualized image not found"}), 404
+    
+    image_id = visualized_image.id  
+    # print(f"Resolved image_id: {image_id}")
 
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
@@ -405,14 +414,8 @@ def upload_csv():
         file.save(file_path)
         logging.info(f"{file.filename} uploaded succesfully")
         
-        # Process the CSV file
         try:
             data = pd.read_csv(file_path,delimiter=';')
-            # logging.info(f"Accessed {file.filename}, CSV columns: {data.columns.tolist()}")
-            
-            # # Replace commas with dots in the relevant columns
-            # for column in ['X(m)', 'Y(m)', 'H(m)_EGM96', 'P_conc', 'K_conc', 'N_conc', 'Chlorophyll_a']:
-            #     data[column] = data[column].str.replace(',', '.').astype(float)
 
             # Convert date strings to Python date objects
             data['date'] = pd.to_datetime(data['date'], format='%d/%m/%Y').dt.date
@@ -420,21 +423,13 @@ def upload_csv():
             # Assuming the CSV has columns matching the fields in StatisticalData
             for index, row in data.iterrows():
                 point_id = row['ID']
-                # logging.info(f"Processing row {index} with point_id {point_id}")
-
-                # # Check if the entry already exists
-                # existing_entry = StatisticalData.query.filter_by(image_id=image_id, point_id=point_id).first()
-
-                # if existing_entry:
-                #     # Skip the entry if it already exists
-                #     continue
-                
+            
                 # Insert new entry
                 new_entry = StatisticalData(
                     image_id=image_id,
                     point_id=point_id,
-                    x=row.get('X(m)'),
-                    y=row.get('Y(m)'),
+                    x=row['X(m)'],
+                    y=row['Y(m)'],
                     h=row.get('H(m)_EGM96'),
                     replicate=row.get('replicate'),
                     sub_replicate=row.get('sub_replicate'),
@@ -446,7 +441,7 @@ def upload_csv():
                     k_conc=row.get('K_conc'),
                     n_conc=row.get('N_conc'),
                     chlorophyll_a=row.get('Chlorophyll_a'),
-                    date=row['date']
+                    date=row.get('date')
                 )
                 db.session.add(new_entry)
 

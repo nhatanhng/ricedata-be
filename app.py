@@ -211,6 +211,14 @@ def delete_file(filename):
 
         visualized_images = VisualizedImages.query.filter_by(file_id=file.id).all()
         for visualized_image in visualized_images:
+            points = Points.query.filter_by(image_id=visualized_image.id).all()
+            for point in points:
+                db.session.delete(point)
+            
+            statistical_data = StatisticalData.query.filter_by(image_id=visualized_image.id).all()
+            for data in statistical_data:
+                db.session.delete(data)
+            
             db.session.delete(visualized_image)
         
         recommend_channels = RecommendChannels.query.filter_by(file_id=file.id).all()

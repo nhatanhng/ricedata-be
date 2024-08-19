@@ -142,12 +142,12 @@ def calculate_and_store_pixel_coordinates():
     
     for point in all_points:
         # Calculate the pixel coordinates relative to the BASE point
-        pixel_x = abs(point.x - base_point.x) / 3779.5275590551
-        pixel_y = abs(point.y - base_point.y) / 3779.5275590551
+        pixel_x = round(abs((point.x - base_point.x) * 3779.5275590551))
+        pixel_y = round(abs((point.y - base_point.y) * 3779.5275590551))
         
         # Create a new Points entry
         new_point = Points(
-            file_id=point.file_id,
+            image_id=point.image_id,
             point_id=point.point_id,
             x=pixel_x,
             y=pixel_y
@@ -370,11 +370,16 @@ def get_visualized_file(filename):
 
 @app.route('/get_points/<filename>', methods=['GET'])
 def get_points(filename):
+    print(f"{filename}")
+    if filename.endswith('.img'):
+        filename = filename.replace('.img', '.png')
+    print(f"{filename}")    
+    
     try:
-        file = Files.query.filter_by(filename=filename).first()
-        if not file:
+        image = VisualizedImages.query.filter_by(visualized_filename = filename).first()
+        if not image:
             return jsonify({"error": "File record not found"}), 404
-        points = Points.query.filter_by(file_id=file.id).all()
+        points = Points.query.filter_by(image_id=image.id).all()
         return jsonify([{'x': point.x, 'y': point.y} for point in points]), 200
     except Exception as e:
         logging.error(f"Error fetching points: {str(e)}")
@@ -454,7 +459,12 @@ def upload_csv():
                 db.session.add(new_entry)
 
             db.session.commit()
-            return jsonify({"message": "CSV data uploaded and added successfully."}), 200
+            logging.info("CSV data uploaded and added successfully.")
+
+            calculate_and_store_pixel_coordinates()
+            logging.info("pixel coordinated calculated and stored.")
+
+            return jsonify({"message": "all process successfully."}), 200
 
         except Exception as e:
             logging.error(f"Error processing CSV: {e}")

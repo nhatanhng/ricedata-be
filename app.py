@@ -7,13 +7,10 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from models import db, Files, Points, VisualizedImages, RecommendChannels, StatisticalData
 import pandas as pd
-from datetime import datetime
 
 from PIL import Image
 import spectral as sp
-import spectral.io.envi as envi
 
-from spectral import open_image
 from npy_append_array import NpyAppendArray
 import numpy as np
 
@@ -84,7 +81,6 @@ def npy_converter(img):
             recommend_channel.R = red
             recommend_channel.G = green
             recommend_channel.B = blue
-            # recommend_channel.nf = nf
             db.session.commit()
         else:
             recommend_channel = RecommendChannels(
@@ -92,7 +88,6 @@ def npy_converter(img):
                 R=red,
                 G=green,
                 B=blue,
-                # nf=nf
             )
             db.session.add(recommend_channel)
             db.session.commit()
@@ -129,36 +124,31 @@ def hsi_to_rgb(hsi_img_name, red, green, blue):
 
     return output_path
 
-def calculate_and_store_pixel_coordinates():
-    # Retrieve the BASE point from the StatisticalData table
-    base_point = StatisticalData.query.filter_by(point_id='BASE').first()
+# def calculate_and_store_pixel_coordinates():
+#     base_point = StatisticalData.query.filter_by(point_id='BASE').first()
     
-    if not base_point:
-        print("BASE point not found.")
-        return
+#     if not base_point:
+#         print("BASE point not found.")
+#         return
     
-    # Iterate over all points except the BASE point
-    all_points = StatisticalData.query.filter(StatisticalData.point_id != 'BASE').all()
+#     all_points = StatisticalData.query.filter(StatisticalData.point_id != 'BASE').all()
     
-    for point in all_points:
-        # Calculate the pixel coordinates relative to the BASE point
-        pixel_x = round(abs((point.x - base_point.x) * 3779.5275590551))
-        pixel_y = round(abs((point.y - base_point.y) * 3779.5275590551))
+#     for point in all_points:
+#         # Assign variables to store in db
+#         pixel_x = 
+#         pixel_y = 
         
-        # Create a new Points entry
-        new_point = Points(
-            image_id=point.image_id,
-            point_id=point.point_id,
-            x=pixel_x,
-            y=pixel_y
-        )
+#         new_point = Points(
+#             image_id=point.image_id,
+#             point_id=point.point_id,
+#             x=pixel_x,
+#             y=pixel_y
+#         )
         
-        # Add the new point to the session
-        db.session.add(new_point)
+#         db.session.add(new_point)
     
-    # Commit all changes to the database
-    db.session.commit()
-    print("Pixel coordinates calculated, converted to pixel value, and stored successfully.")
+#     db.session.commit()
+#     print("Pixel coordinates calculated, converted to pixel value, and stored successfully.")
 
 @app.route('/uploads/files', methods=['POST'])
 def upload():
@@ -205,9 +195,6 @@ def delete_file(filename):
         if not file:
             return jsonify({"error": "File not found"}), 404
         
-        # points = Points.query.filter_by(file_id=file.id).all()
-        # for point in points:
-        #     db.session.delete(point)
 
         visualized_images = VisualizedImages.query.filter_by(file_id=file.id).all()
         for visualized_image in visualized_images:
@@ -227,8 +214,7 @@ def delete_file(filename):
         
         db.session.delete(file)
         db.session.commit()
-        # os.remove(file.filepath)
-        # Check if the file exists before trying to delete it
+
         if os.path.exists(file.filepath):
             os.remove(file.filepath)
         else:
@@ -236,7 +222,6 @@ def delete_file(filename):
         
         return jsonify({"message": f"File {filename} deleted successfully"}), 200
     except Exception as e:
-        # Log the exception for debugging purposes
         app.logger.error(f"Error deleting file {filename}: {str(e)}")
         return jsonify({"error": str(e)}), 500        
 
@@ -270,24 +255,32 @@ def visualize_HSI():
         r = data['R']
         g = data['G']
         b = data['B'] 
-        # nf = data['nf']
         
         img_name = filename.split('.')[0]
         img_path = os.path.join(VISUALIZED_FOLDER, img_name + '.png')
         
         img_path = hsi_to_rgb(img_name, r, g, b)
         logging.info(f"Image {img_name}.png created and saved with R={r}, G={g}, B={b}.")
+
+        # Open the image to get its dimensions
+        with Image.open(img_path) as img:
+            width, height = img.size
+
         
         file_record = Files.query.filter_by(filename=filename).first()
         if file_record:
             visualized_image = VisualizedImages.query.filter_by(file_id=file_record.id).first()
             if visualized_image:
                 visualized_image.visualized_filepath = img_path
+                visualized_image.width = width  
+                visualized_image.height = height  
             else:
                 visualized_image = VisualizedImages(
                     file_id=file_record.id,
                     visualized_filename=img_name + '.png',
-                    visualized_filepath=img_path
+                    visualized_filepath=img_path,
+                    width=width,  
+                    height=height  
                 )
                 db.session.add(visualized_image)
             db.session.commit()
@@ -407,9 +400,6 @@ def upload_csv():
     file = request.files['file']
     image_filename = request.form['image_id']  
 
-    # print(f"Received image filename: {image_filename}")
-
-    # Replace .img extension with .png
     if image_filename.endswith('.img'):
         image_filename = image_filename.replace('.img', '.png')
 
@@ -419,7 +409,6 @@ def upload_csv():
         return jsonify({"error": "Visualized image not found"}), 404
     
     image_id = visualized_image.id  
-    # print(f"Resolved image_id: {image_id}")
 
     if file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
@@ -437,12 +426,11 @@ def upload_csv():
             for index, row in data.iterrows():
                 point_id = row['ID']
             
-                # Insert new entry
                 new_entry = StatisticalData(
                     image_id=image_id,
                     point_id=point_id,
-                    x=row['X(m)'],
-                    y=row['Y(m)'],
+                    y=row['X(m)'],
+                    x =row['Y(m)'],
                     h=row.get('H(m)_EGM96'),
                     replicate=row.get('replicate'),
                     sub_replicate=row.get('sub_replicate'),
@@ -461,8 +449,8 @@ def upload_csv():
             db.session.commit()
             logging.info("CSV data uploaded and added successfully.")
 
-            calculate_and_store_pixel_coordinates()
-            logging.info("pixel coordinated calculated and stored.")
+            # calculate_and_store_pixel_coordinates()
+            # logging.info("pixel coordinated calculated and stored.")
 
             return jsonify({"message": "all process successfully."}), 200
 

@@ -20,6 +20,8 @@ class VisualizedImages(db.Model):
     file_id = db.Column(db.Integer, db.ForeignKey('files.id'), nullable=False)
     visualized_filename = db.Column(db.String(255), nullable=False)
     visualized_filepath = db.Column(db.String(200), nullable=False)
+    width = db.Column(db.Integer)  
+    height = db.Column(db.Integer)  
 
     statistical_data = db.relationship('StatisticalData', backref='visualized_images', lazy=True)
     points = db.relationship('Points', backref='visualized_images', lazy=True)

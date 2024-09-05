@@ -16,7 +16,7 @@ import numpy as np
 
 from pyproj import Proj, transform
 import math
-import utm
+
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -127,124 +127,34 @@ def hsi_to_rgb(hsi_img_name, red, green, blue):
 
     return output_path
 
-# def convert_northing_easting_to_lat_long(easting, northing, zone_number=48, northern_hemisphere=True):
-#     # Define the projection for UTM zone 48N
-#     proj_utm = Proj(proj='utm', zone=zone_number, ellps='WGS84', south=not northern_hemisphere)
-    
-#     # Define the projection for latitude and longitude
-#     proj_lat_long = Proj(proj='latlong', datum='WGS84')
-    
-#     # Convert easting and northing to latitude and longitude
-#     longitude, latitude = transform(proj_utm, proj_lat_long, easting, northing)
-    
-#     return latitude, longitude
 
-# # def latlon_to_pixels(latitude, longitude, map_width, map_height):
-#     # Convert longitude to x
-#     x = (longitude + 180) / 360 * map_width
-    
-#     # Convert latitude to y using the Mercator projection formula
-#     lat_rad = math.radians(latitude)
-#     merc_n = math.log(math.tan((math.pi / 4) + (lat_rad / 2)))
-#     y = (map_height / 2) - (map_width * merc_n / (2 * math.pi))
-    
-#     return int(x), int(y)
+def convert_to_pixels(northing, easting, base_northing, base_easting, original_width, original_height, display_width, display_height):
+    scale_coordinate =  0.035
 
-# def calculate_pixel_coordinates(top_left_northing, top_left_easting, point_northing, point_easting, meters_per_pixel):
-#     # Calculate the difference in UTM coordinates
-#     delta_easting = point_easting - top_left_easting
-#     delta_northing = top_left_northing - point_northing  # Subtract because moving down
-    
-#     # Convert the UTM differences to pixel offsets
-#     pixel_x = int(delta_easting / meters_per_pixel)
-#     pixel_y = int(delta_northing / meters_per_pixel)
-    
-#     return pixel_x, pixel_y
+    # Convert to pixel coordinates based on the original image size
+    x_pixel = abs(easting - base_easting) / scale_coordinate
+    y_pixel = abs(base_northing - northing) / scale_coordinate
 
-# def adjust_coordinates_to_fit(image_width, image_height, all_pixel_coords):
-#     min_x, min_y = float('inf'), float('inf')
-    
-#     # Find the minimum pixel coordinates to determine the offset needed
-#     for pixel_x, pixel_y in all_pixel_coords:
-#         min_x = min(min_x, pixel_x)
-#         min_y = min(min_y, pixel_y)
-    
-#     # Calculate the necessary offset to bring all coordinates within the image bounds
-#     x_offset = -min_x if min_x < 0 else 0
-#     y_offset = -min_y if min_y < 0 else 0
-    
-#     return x_offset, y_offset
+    # Rotation matrix for 45 degrees
+    cos_45 = math.cos(math.radians(45))
+    sin_45 = math.sin(math.radians(45))
 
+    x_pixel_rotated = x_pixel * cos_45 - y_pixel * sin_45
+    y_pixel_rotated = x_pixel * sin_45 + y_pixel * cos_45
 
-# def calculate_and_store_pixel_coordinates():
-#     base_point = StatisticalData.query.filter_by(point_id='BASE').first()
-    
-#     if not base_point:
-#         print("BASE point not found.")
-#         return
+    # Translate to ensure coordinates are positive
+    x_pixel_rotated += original_width / 2
+    y_pixel_rotated += original_height / 2
 
-#     top_left_northing = base_point.y  # Assuming y represents northing in the database
-#     top_left_easting = base_point.x  # Assuming x represents easting in the database
-    
-#     # Assume meters per pixel is known
-#     meters_per_pixel = 0.03  # Example resolution, adjust based on your data
+    # Scale to display size
+    x_pixel_scaled = x_pixel_rotated * (display_width / original_width)
+    y_pixel_scaled = y_pixel_rotated * (display_height / original_height)
 
-#     all_points = StatisticalData.query.filter(StatisticalData.point_id != 'BASE').all()
-    
-#     all_pixel_coords = []
+    # Clip values to ensure they stay within display image dimensions
+    x_pixel_clipped = max(0, min(int(x_pixel_scaled), display_width - 1)) + 240
+    y_pixel_clipped = max(0, min(int(y_pixel_scaled), display_height - 1)) - 575
 
-#     for point in all_points:
-#         visualized_image = VisualizedImages.query.filter_by(id=point.image_id).first()
-#         image_width = visualized_image.width
-#         image_height = visualized_image.height
-
-#         # # Convert northing and easting to latitude and longitude
-#         # latitude, longitude = convert_northing_easting_to_lat_long(point.x, point.y)
-#         # print(point.x, point.y)
-
-#         # # Convert latitude and longitude to pixel coordinates
-#         # pixel_x, pixel_y = latlon_to_pixels(latitude, longitude, image_width, image_height)
-#         # print(pixel_x, pixel_y)
-
-#         # Convert point northing/easting to pixel coordinates
-#         pixel_x, pixel_y = calculate_pixel_coordinates(top_left_northing, top_left_easting, point.y, point.x, meters_per_pixel)
-#         all_pixel_coords.append((pixel_x, pixel_y))
-
-#     # Adjust all coordinates to fit within the image dimensions
-#     x_offset, y_offset = adjust_coordinates_to_fit(image_width, image_height, all_pixel_coords)
-   
-
-
-#     #     new_point = Points(
-#     #         image_id=point.image_id,
-#     #         point_id=point.point_id,
-#     #         x=pixel_x,
-#     #         y=pixel_y
-#     #     )
-        
-#     #     db.session.add(new_point)
-    
-#     # db.session.commit()
-
-#     # Store the adjusted coordinates in the database
-#     for i, point in enumerate(all_points):
-#         pixel_x, pixel_y = all_pixel_coords[i]
-        
-#         # Apply the offset
-#         pixel_x += x_offset
-#         pixel_y += y_offset
-        
-#         new_point = Points(
-#             image_id=point.image_id,
-#             point_id=point.point_id,
-#             x=pixel_x,
-#             y=pixel_y
-#         )
-        
-#         db.session.add(new_point)
-    
-#     db.session.commit()
-#     print("Pixel coordinates calculated, converted to pixel value, and stored successfully.")
+    return x_pixel_clipped, y_pixel_clipped
 
 @app.route('/uploads/files', methods=['POST'])
 def upload():
@@ -277,6 +187,8 @@ def get_files():
 @app.route('/download/<filename>', methods=['GET'])
 def download(filename):
     try:
+        filename = secure_filename(filename)
+
         file = Files.query.filter_by(filename=filename).first()
         if not file:
             return jsonify({"error": "File not found"}), 404
@@ -499,30 +411,30 @@ def upload_csv():
         filename = secure_filename(file.filename)
         file_path = os.path.join(app.config['UPLOAD_CSV_FOLDER'], filename)
         file.save(file_path)
-        logging.info(f"{file.filename} uploaded succesfully")
+        logging.info(f"{file.filename} uploaded successfully")
         
         try:
-            data = pd.read_csv(file_path,delimiter=';')
+            data = pd.read_csv(file_path, delimiter=';')
 
             # Convert date strings to Python date objects
             data['date'] = pd.to_datetime(data['date'], format='%d/%m/%Y').dt.date
 
-            # Assuming the CSV has columns matching the fields in StatisticalData
+            # Store all data in StatisticalData table
             for index, row in data.iterrows():
                 point_id = row['ID']
-            
+
                 new_entry = StatisticalData(
                     image_id=image_id,
                     point_id=point_id,
                     y=row['X(m)'],
-                    x =row['Y(m)'],
+                    x=row['Y(m)'],
                     h=row.get('H(m)_EGM96'),
                     replicate=row.get('replicate'),
                     sub_replicate=row.get('sub_replicate'),
                     chlorophyll=row.get('chlorophyll'),
-                    rice_height=row.get('rice_height'),
-                    spectral_num=row.get('spectral_num'),
-                    digesion=row.get('digesion'),
+                    rice_height=row.get('Rice_Height'),
+                    spectral_num=row.get('Spectral_number'),
+                    digesion=row.get('Digesion'),
                     p_conc=row.get('P_conc'),
                     k_conc=row.get('K_conc'),
                     n_conc=row.get('N_conc'),
@@ -532,12 +444,60 @@ def upload_csv():
                 db.session.add(new_entry)
 
             db.session.commit()
-            # logging.info("CSV data uploaded and added successfully.")
 
-            # calculate_and_store_pixel_coordinates()
-            # logging.info("pixel coordinated calculated and stored.")
+            base_data = StatisticalData.query.filter_by(image_id=image_id, point_id='BASE').first()
+            if not base_data:
+                return jsonify({"error": "Base point not found"}), 404
 
-            return jsonify({"message": "CSV data uploaded and added successfully."}), 200
+            base_northing = base_data.y  # X(m)
+            base_easting = base_data.x   # Y(m)\
+
+            image_width = visualized_image.width
+            image_height = visualized_image.height
+
+            # Retrieve the display size from the request (should be sent from frontend)
+            display_width = int(float(request.form.get('display_width', visualized_image.width)))
+            display_height = int(float(request.form.get('display_height', visualized_image.height)))
+
+
+            # Now calculate and store pixel coordinates in the Points table
+            other_points = StatisticalData.query.filter(StatisticalData.image_id == image_id, StatisticalData.point_id != 'BASE').all()
+
+            for point_data in other_points:
+                northing = point_data.y  # X(m)
+                easting = point_data.x   # Y(m)
+                point_id = point_data.point_id
+
+                x_pixel, y_pixel = convert_to_pixels(
+                    northing=northing,
+                    easting=easting,
+                    base_northing=base_northing,
+                    base_easting=base_easting,
+                    display_width=display_width,
+                    display_height=display_height,
+                    original_width=image_width,
+                    original_height=image_height
+                )
+                # Check if the point already exists in Points table
+                point_entry = Points.query.filter_by(image_id=image_id, point_id=point_id).first()
+                
+                if point_entry:
+                    # Update existing entry
+                    point_entry.x = x_pixel
+                    point_entry.y = y_pixel
+                else:
+                    # Insert new entry
+                    point_entry = Points(
+                        image_id=image_id,
+                        point_id=point_id,
+                        x=x_pixel,
+                        y=y_pixel
+                    )
+                    db.session.add(point_entry)
+
+            db.session.commit()
+            
+            return jsonify({"message": "CSV data uploaded and updated successfully."}), 200
 
         except Exception as e:
             logging.error(f"Error processing CSV: {e}")
@@ -546,149 +506,74 @@ def upload_csv():
 
     return jsonify({"error": "Invalid file format"}), 400
 
-@app.route('/get_point_ids', methods=['GET'])
-def get_point_ids():
-    try:
-        # Retrieve all unique point IDs from the StatisticalData table
-        point_ids = db.session.query(StatisticalData.point_id).distinct().all()
+@app.route('/get_points/<image_id>', methods=['GET'])
+def get_points(image_id):
+    if image_id.endswith('.img'):
+        image_id = image_id.replace('.img', '.png')
 
-        # Flatten the list of tuples
-        point_ids = [point_id[0] for point_id in point_ids]
+    visualized_image = VisualizedImages.query.filter_by(visualized_filename = image_id ).first()
 
-        return jsonify({"point_ids": point_ids}), 200
+    image_id = visualized_image.id
 
-    except Exception as e:
-        logging.error(f"Error retrieving point IDs: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+
+    # Query the Points table to get all points associated with the given image_id
+    points = Points.query.filter_by(image_id=image_id).all()
+    if not points:
+        return jsonify({"error": "No points found for the provided image ID"}), 404
     
-@app.route('/store_point_id', methods=['POST'])
-def store_point_id():
-    try:
-        # Get the selected point details from the request
-        selected_point = request.json.get('selected_point', {})
-        print(f"Received selected_point: {selected_point}")
-        
-        point_id = selected_point.get('point_id')
-        x = selected_point.get('x')
-        y = selected_point.get('y')
-        image_id = selected_point.get('image_id')
-
-        print(f"Extracted point_id: {point_id}, x: {x}, y: {y}, image_id: {image_id}")
-
-        if not point_id:
-            return jsonify({"error": "No point_id provided"}), 400
-
-        # Resolve the image_id from the image filename
-        visualized_image = VisualizedImages.query.filter_by(visualized_filename=image_id.replace('.img', '.png')).first()
-
-        if not visualized_image:
-            print(f"No VisualizedImages entry found for visualized_filename: {image_id}")
-            return jsonify({"error": "Invalid image_id provided"}), 400
-        
-        image_id_num = visualized_image.id
-        print(f"Resolved image_id_num: {image_id_num}")
-
-        # Find the corresponding point in the Points table
-        existing_point = Points.query.filter_by(
-            image_id=image_id_num,
-            x=x,
-            y=y
-        ).first()
-
-        if existing_point:
-            # Update the point_id if necessary
-            existing_point.point_id = point_id
-            print(f"Updated existing Point: {existing_point}")
-        else:
-            # Insert a new entry into the Points table
-            new_point = Points(
-                image_id=image_id_num,
-                point_id=point_id,
-                x=x,
-                y=y
-            )
-            db.session.add(new_point)
-            print(f"Added new Point: {new_point}")
-
-        # Commit the changes to the database
-        db.session.commit()
-
-        return jsonify({"message": "Point ID stored successfully"}), 200
-
-    except Exception as e:
-        logging.error(f"Error storing point ID: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    # Prepare the response data
+    points_data = []
+    for point in points:
+        points_data.append({
+            "point_id": point.point_id,
+            "x": point.x,
+            "y": point.y
+        })
+    
+    return jsonify(points_data), 200
 
 @app.route('/get_statistical_data', methods=['POST'])
 def get_statistical_data():
     try:
-        # Get the selected point_id from the request
-        point_id = request.json.get('point_id')
-        print(f"Received point_id: {point_id}")
+        # Expecting a list of point IDs or coordinates from the frontend
+        point_ids = request.json.get('point_ids', [])
+        print(point_ids)
 
-        if not point_id:
-            return jsonify({"error": "No point_id provided"}), 400
+        if not point_ids:
+            return jsonify({"error": "No point IDs provided"}), 400
 
-        # Retrieve the StatisticalData entry that matches the provided point_id
-        statistical_data_entry = StatisticalData.query.filter_by(point_id=point_id).first()
+        # Query the StatisticalData table for the provided point IDs
+        statistical_data = StatisticalData.query.filter(StatisticalData.point_id.in_(point_ids)).all()
 
-        if not statistical_data_entry:
-            print(f"No StatisticalData entry found for point_id: {point_id}")
-            return jsonify({"error": "No data found for the given point_id"}), 404
+        if not statistical_data:
+            return jsonify({"error": "No statistical data found for the provided points"}), 404
 
-        # Convert the data to a dictionary to return as JSON
-        data = {
-            "id": statistical_data_entry.id,
-            "image_id": statistical_data_entry.image_id,
-            "point_id": statistical_data_entry.point_id,
-            "x": statistical_data_entry.x,
-            "y": statistical_data_entry.y,
-            "h": statistical_data_entry.h,
-            "replicate": statistical_data_entry.replicate,
-            "sub_replicate": statistical_data_entry.sub_replicate,
-            "chlorophyll": statistical_data_entry.chlorophyll,
-            "rice_height": statistical_data_entry.rice_height,
-            "spectral_num": statistical_data_entry.spectral_num,
-            "digesion": statistical_data_entry.digesion,
-            "p_conc": statistical_data_entry.p_conc,
-            "k_conc": statistical_data_entry.k_conc,
-            "n_conc": statistical_data_entry.n_conc,
-            "chlorophyll_a": statistical_data_entry.chlorophyll_a,
-            "date": statistical_data_entry.date
-        }
+        # Prepare the response data
+        data_response = []
+        for data in statistical_data:
+            data_response.append({
+                "point_id": data.point_id,
+                "x": data.x,
+                "y": data.y,
+                "h": data.h,
+                "replicate": data.replicate,
+                "sub_replicate": data.sub_replicate,
+                "chlorophyll": data.chlorophyll,
+                "rice_height": data.rice_height,
+                "spectral_num": data.spectral_num,
+                "digesion": data.digesion,
+                "p_conc": data.p_conc,
+                "k_conc": data.k_conc,
+                "n_conc": data.n_conc,
+                "chlorophyll_a": data.chlorophyll_a,
+                "date": data.date.isoformat() if data.date else None
+            })
 
-        print(f"Returning statistical data: {data}")
-        return jsonify({"statistical_data": data}), 200
+        return jsonify(data_response), 200
 
     except Exception as e:
-        logging.error(f"Error retrieving statistical data: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/get_points/<image_filename>', methods=['GET'])
-def get_points(image_filename):
-    try:
-        visualized_image = VisualizedImages.query.filter_by(visualized_filename=image_filename).first()
-
-        if not visualized_image:
-            return jsonify({"error": "Image not found"}), 404
-
-        points = Points.query.filter_by(image_id=visualized_image.id).all()
-
-        points_data = [
-            {
-                "id": point.id,
-                "x": point.x,
-                "y": point.y,
-                "point_id": point.point_id
-            }
-            for point in points
-        ]
-
-        return jsonify(points_data), 200
-
-    except Exception as e:
-        logging.error(f"Error retrieving points: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        logging.error(f"Error retrieving statistical data: {e}")
+        return jsonify({"error": "An error occurred while retrieving statistical data"}), 500
 
 
 if __name__ == "__main__":

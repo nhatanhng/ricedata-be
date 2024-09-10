@@ -154,7 +154,19 @@ def convert_to_pixels(northing, easting, base_northing, base_easting, original_w
     x_pixel_clipped = max(0, min(int(x_pixel_scaled), display_width - 1)) + 240
     y_pixel_clipped = max(0, min(int(y_pixel_scaled), display_height - 1)) - 575
 
+    # x_pixel_clipped = max(0, min(int(x_pixel_scaled), display_width - 1)) 
+    # y_pixel_clipped = max(0, min(int(y_pixel_scaled), display_height - 1)) 
+
     return x_pixel_clipped, y_pixel_clipped
+
+# def convert_to_pixels(northing, easting, base_northing, base_easting, original_width, original_height, display_width, display_height):
+
+#     pixel_x = abs(easting - base_easting) / 0.03
+#     pixel_y = abs(base_northing - northing) / 0.03
+
+#     return int(pixel_x), int(pixel_y)  
+
+
 
 @app.route('/uploads/files', methods=['POST'])
 def upload():
@@ -178,11 +190,6 @@ def upload():
         else:
             return 'No file uploaded', 400
 
-@app.route('/files', methods=['GET'])
-def get_files():
-    if request.method == 'GET':
-        files = Files.query.all()
-        return jsonify([{'id': file.id, 'filename': file.filename} for file in files]), 200
 
 @app.route('/download/<filename>', methods=['GET'])
 def download(filename):
@@ -450,7 +457,7 @@ def upload_csv():
                 return jsonify({"error": "Base point not found"}), 404
 
             base_northing = base_data.y  # X(m)
-            base_easting = base_data.x   # Y(m)\
+            base_easting = base_data.x   # Y(m)
 
             image_width = visualized_image.width
             image_height = visualized_image.height
@@ -460,7 +467,7 @@ def upload_csv():
             display_height = int(float(request.form.get('display_height', visualized_image.height)))
 
 
-            # Now calculate and store pixel coordinates in the Points table
+            # calculate and store pixel coordinates in the Points table
             other_points = StatisticalData.query.filter(StatisticalData.image_id == image_id, StatisticalData.point_id != 'BASE').all()
 
             for point_data in other_points:
@@ -515,8 +522,6 @@ def get_points(image_id):
 
     image_id = visualized_image.id
 
-
-    # Query the Points table to get all points associated with the given image_id
     points = Points.query.filter_by(image_id=image_id).all()
     if not points:
         return jsonify({"error": "No points found for the provided image ID"}), 404
@@ -542,7 +547,6 @@ def get_statistical_data():
         if not point_ids:
             return jsonify({"error": "No point IDs provided"}), 400
 
-        # Query the StatisticalData table for the provided point IDs
         statistical_data = StatisticalData.query.filter(StatisticalData.point_id.in_(point_ids)).all()
 
         if not statistical_data:
@@ -574,7 +578,34 @@ def get_statistical_data():
     except Exception as e:
         logging.error(f"Error retrieving statistical data: {e}")
         return jsonify({"error": "An error occurred while retrieving statistical data"}), 500
+    
+@app.route('/delete_data', methods=['POST'])
+def delete_data():
+    try:
+        data = request.json
+        print(data)
 
+        filename = data.get('visualized_filename')
+        print(filename)
+
+        if filename:
+            image = VisualizedImages.query.filter_by(visualized_filename=filename).first()
+        else:
+            return jsonify({'error': 'image_id or visualized_filename is required'}), 400
+
+        if not image:
+            return jsonify({'error': 'Image not found'}), 404
+
+        Points.query.filter_by(image_id=image.id).delete()
+
+        StatisticalData.query.filter_by(image_id=image.id).delete()
+
+        db.session.commit()
+        return jsonify({'message': 'Data deleted successfully'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)

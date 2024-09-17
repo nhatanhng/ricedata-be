@@ -170,26 +170,38 @@ def convert_to_pixels(northing, easting, base_northing, base_easting, original_w
 
 @app.route('/uploads/files', methods=['POST'])
 def upload():
-    if request.method == 'POST':
-        file = request.files['file']
-        if file:
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file_extension = filename.split('.')[-1]
-            file.save(filepath)
+    try:
+        if request.method == 'POST':
+            file = request.files['file']
+            if file:                
+                filename = secure_filename(file.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                file_extension = filename.split('.')[-1]
+                file.save(filepath)
 
-            upload = Files(filename=filename, filepath=filepath, extension=file_extension)
-            db.session.add(upload)
-            db.session.commit()
+                upload = Files(filename=filename, filepath=filepath, extension=file_extension)
+                db.session.add(upload)
+                db.session.commit()
 
-            file_record = Files.query.filter_by(filename=filename).first()
-            if file_record.extension == 'hdr':
-                npy_converter(file)
+                file_record = Files.query.filter_by(filename=filename).first()
+                if file_record.extension == 'hdr':
+                    npy_converter(file)
 
-            return f'Uploaded: {filename}'
-        else:
-            return 'No file uploaded', 400
-
+                return f'Uploaded: {filename}'
+            else:
+                return 'No file uploaded', 400
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+@app.route('/check-file', methods=['POST'])
+def check_file():
+    filenames = request.json.get('filenames', [])
+    existing_files = Files.query.filter(Files.filename.in_(filenames)).all()
+    if existing_files:
+        existing_filenames = [file.filename for file in existing_files]
+        return jsonify({"exists": True, "existsFiles": existing_filenames}), 200
+    return jsonify({"exists": False}), 200
 
 @app.route('/download/<filename>', methods=['GET'])
 def download(filename):

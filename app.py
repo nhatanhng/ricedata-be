@@ -606,6 +606,64 @@ def delete_data():
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/statistical_data_table', methods=['GET'])  
+def statistical_data():
+    try:
+        # Query to get unique point_id data, keeping the first occurrence of duplicates
+        data = db.session.query(
+            StatisticalData.id,
+            StatisticalData.image_id,
+            StatisticalData.point_id,
+            StatisticalData.x,
+            StatisticalData.y,
+            StatisticalData.h,
+            StatisticalData.replicate,
+            StatisticalData.sub_replicate,
+            StatisticalData.chlorophyll,
+            StatisticalData.rice_height,
+            StatisticalData.spectral_num,
+            StatisticalData.digesion,
+            StatisticalData.p_conc,
+            StatisticalData.k_conc,
+            StatisticalData.n_conc,
+            StatisticalData.chlorophyll_a,
+            StatisticalData.date
+        ).group_by(
+            StatisticalData.point_id, 
+            StatisticalData.image_id, 
+            StatisticalData.date
+        ).all()
+
+        # Convert data to list of dicts for JSON response
+        result = []
+        for row in data:
+            result.append({
+                "id": row.id,
+                "image_id": row.image_id,
+                "point_id": row.point_id,
+                "x": row.x,
+                "y": row.y,
+                "h": row.h,
+                "replicate": row.replicate,
+                "sub_replicate": row.sub_replicate,
+                "chlorophyll": row.chlorophyll,
+                "rice_height": row.rice_height,
+                "spectral_num": row.spectral_num,
+                "digesion": row.digesion,
+                "p_conc": row.p_conc,
+                "k_conc": row.k_conc,
+                "n_conc": row.n_conc,
+                "chlorophyll_a": row.chlorophyll_a,
+                "date": row.date.strftime("%Y-%m-%d")
+            })
+
+        return jsonify(result), 200
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(debug=True)

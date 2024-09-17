@@ -615,10 +615,8 @@ def get_statistical_data():
 def delete_data():
     try:
         data = request.json
-        print(data)
 
         filename = data.get('visualized_filename')
-        print(filename)
 
         if filename:
             image = VisualizedImages.query.filter_by(visualized_filename=filename).first()

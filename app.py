@@ -154,18 +154,8 @@ def convert_to_pixels(northing, easting, base_northing, base_easting, original_w
     x_pixel_clipped = max(0, min(int(x_pixel_scaled), display_width - 1)) + 240
     y_pixel_clipped = max(0, min(int(y_pixel_scaled), display_height - 1)) - 575
 
-    # x_pixel_clipped = max(0, min(int(x_pixel_scaled), display_width - 1)) 
-    # y_pixel_clipped = max(0, min(int(y_pixel_scaled), display_height - 1)) 
 
     return x_pixel_clipped, y_pixel_clipped
-
-# def convert_to_pixels(northing, easting, base_northing, base_easting, original_width, original_height, display_width, display_height):
-
-#     pixel_x = abs(easting - base_easting) / 0.03
-#     pixel_y = abs(base_northing - northing) / 0.03
-
-#     return int(pixel_x), int(pixel_y)  
-
 
 
 @app.route('/uploads/files', methods=['POST'])

@@ -248,19 +248,51 @@ def rename_file(filename):
         if not new_filename:
             return jsonify({"error": "New filename not provided"}), 400
         
+        # Retrieve the file from the database
         file = Files.query.filter_by(filename=filename).first()
         if not file:
             return jsonify({"error": "File not found"}), 404
 
+        # Generate new file paths
         new_filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(new_filename))
+
+        # Rename the file on the filesystem
         os.rename(file.filepath, new_filepath)
 
+        # Rename the associated .npy file (if it exists)
+        old_npy_filename = filename.rsplit('.', 1)[0] + ".npy"
+        old_npy_filepath = os.path.join(app.config['UPLOAD_FOLDER_NPY'], old_npy_filename)
+        if os.path.exists(old_npy_filepath):
+            new_npy_filename = new_filename.rsplit('.', 1)[0] + ".npy"
+            new_npy_filepath = os.path.join(app.config['UPLOAD_FOLDER_NPY'], new_npy_filename)
+            os.rename(old_npy_filepath, new_npy_filepath)
+
+        # Rename the associated visualized image (if it exists)
+        visualized_image = VisualizedImages.query.filter_by(file_id=file.id).first()
+        if visualized_image:
+            old_visualized_filepath = visualized_image.visualized_filepath
+            if old_visualized_filepath:
+                new_image_filename = new_filename.rsplit('.', 1)[0] + ".png"
+                new_image_filepath = os.path.join(app.config['VISUALIZED_FOLDER'], new_image_filename)
+                os.rename(old_visualized_filepath, new_image_filepath)
+
+                # Update visualized image record in the database
+                visualized_image.visualized_filename = new_image_filename
+                visualized_image.visualized_filepath = new_image_filepath
+
+        # Update the file record in the database
         file.filename = new_filename
         file.filepath = new_filepath
+
+        # Commit the changes to the database
         db.session.commit()
-        return jsonify({"message": f"File {filename} renamed to {new_filename}"}), 200
+        
+        return jsonify({"message": f"File {filename} renamed to {new_filename} and related image renamed"}), 200
+    
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
     
 @app.route('/hyperspectral', methods=['POST'])
 def visualize_HSI():

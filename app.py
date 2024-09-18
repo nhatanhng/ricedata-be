@@ -696,6 +696,105 @@ def statistical_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/n_concentration', methods=['GET'])
+def get_n_concentration_data():
+    try:
+        # Query all data excluding point_id 'BASE'
+        data = StatisticalData.query.with_entities(
+            StatisticalData.point_id, StatisticalData.n_conc, StatisticalData.date).filter(
+                StatisticalData.point_id != 'BASE').all()
+
+        # Format the data as needed by Chart.js
+        formatted_data = {}
+        for record in data:
+            point_id = record.point_id
+            date = record.date.strftime("%Y-%m-%d")  # Convert date to string
+            n_conc = record.n_conc
+
+            if point_id not in formatted_data:
+                formatted_data[point_id] = {"dates": [], "n_conc_values": []}
+
+            formatted_data[point_id]["dates"].append(date)
+            formatted_data[point_id]["n_conc_values"].append(n_conc)
+            # print(formatted_data)
+
+        return jsonify(formatted_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/k_concentration', methods=['GET'])
+def get_k_concentration_data():
+    try:
+        # Query all K concentration data excluding point_id 'BASE'
+        data = StatisticalData.query.with_entities(
+            StatisticalData.point_id, StatisticalData.k_conc, StatisticalData.date).filter(
+                StatisticalData.point_id != 'BASE').all()
+
+        # Format the data
+        formatted_data = {}
+        for record in data:
+            point_id = record.point_id
+            date = record.date.strftime("%Y-%m-%d")  # Convert date to string
+            k_conc = record.k_conc
+
+            if point_id not in formatted_data:
+                formatted_data[point_id] = {"dates": [], "k_conc_values": []}
+
+            formatted_data[point_id]["dates"].append(date)
+            formatted_data[point_id]["k_conc_values"].append(k_conc)
+
+        return jsonify(formatted_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/p_concentration', methods=['GET'])
+def get_p_concentration_data():
+    try:
+        # Query all P concentration data excluding point_id 'BASE'
+        data = StatisticalData.query.with_entities(
+            StatisticalData.point_id, StatisticalData.p_conc, StatisticalData.date).filter(
+                StatisticalData.point_id != 'BASE').all()
+
+        # Format the data
+        formatted_data = {}
+        for record in data:
+            point_id = record.point_id
+            date = record.date.strftime("%Y-%m-%d")  # Convert date to string
+            p_conc = record.p_conc
+
+            if point_id not in formatted_data:
+                formatted_data[point_id] = {"dates": [], "p_conc_values": []}
+
+            formatted_data[point_id]["dates"].append(date)
+            formatted_data[point_id]["p_conc_values"].append(p_conc)
+
+        return jsonify(formatted_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/chlorophyll_a', methods=['GET'])
+def get_chlorophyll_a_data():
+    try:
+        # Query all Chlorophyll A data excluding point_id 'BASE'
+        data = StatisticalData.query.with_entities(StatisticalData.point_id, StatisticalData.chlorophyll_a, StatisticalData.date).filter(StatisticalData.point_id != 'BASE').all()
+
+        # Format the data
+        formatted_data = {}
+        for record in data:
+            point_id = record.point_id
+            date = record.date.strftime("%Y-%m-%d")  # Convert date to string
+            chlorophyll_a = record.chlorophyll_a
+
+            if point_id not in formatted_data:
+                formatted_data[point_id] = {"dates": [], "chlorophyll_a_values": []}
+
+            formatted_data[point_id]["dates"].append(date)
+            formatted_data[point_id]["chlorophyll_a_values"].append(chlorophyll_a)
+
+        return jsonify(formatted_data), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -17,6 +17,11 @@ import numpy as np
 from pyproj import Proj, transform
 import math
 
+import matplotlib
+import matplotlib.pyplot as plt
+import specdal
+from io import BytesIO
+
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
@@ -38,6 +43,7 @@ UPLOAD_FOLDER = 'uploads'
 VISUALIZED_FOLDER = 'visualized'
 UPLOAD_FOLDER_NPY = 'uploads/npy'
 UPLOAD_CSV_FOLDER = 'uploads/csv_mapping_points'
+UPLOAD_REFLECTANCE_DATA = 'uploads/reflectance_data'
 
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -46,11 +52,14 @@ if not os.path.exists(VISUALIZED_FOLDER):
     os.makedirs(VISUALIZED_FOLDER)
 if not os.path.exists(UPLOAD_FOLDER_NPY):
     os.makedirs(UPLOAD_FOLDER_NPY)
+if not os.path.exists(UPLOAD_REFLECTANCE_DATA):
+    os.makedirs(UPLOAD_REFLECTANCE_DATA)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['VISUALIZED_FOLDER'] = VISUALIZED_FOLDER
 app.config['UPLOAD_FOLDER_NPY'] = UPLOAD_FOLDER_NPY
 app.config['UPLOAD_CSV_FOLDER'] = UPLOAD_CSV_FOLDER
+app.config['UPLOAD_REFLECTANCE_DATA'] = UPLOAD_REFLECTANCE_DATA
 
 
 def allowed_file(filename):
@@ -537,6 +546,7 @@ def upload_csv():
                     db.session.add(point_entry)
 
             db.session.commit()
+            os.remove(file_path)
             
             return jsonify({"message": "CSV data uploaded and updated successfully."}), 200
 
@@ -796,5 +806,44 @@ def get_chlorophyll_a_data():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Route for file upload and spectral graph generation
+@app.route('/upload_reflectance_data', methods=['POST'])
+def upload_reflectance_data():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+
+    file = request.files['file']
+
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+
+    # Save the uploaded file temporarily
+    filepath = os.path.join(app.config['UPLOAD_REFLECTANCE_DATA'], file.filename)
+    file.save(filepath)
+
+    try:
+        s = specdal.Spectrum(filepath=filepath)
+        # Plot the graph directly using specdal's plot functionality
+        plt.figure()
+        s.plot()
+        plt.xlabel('Wavelength (nm)')
+        plt.ylabel('Reflectance')
+        plt.title('Spectral Reflectance')
+
+        # Save the plot to a BytesIO object
+        img = BytesIO()
+        plt.savefig(img, format='png')
+        img.seek(0)
+        plt.close()
+
+        # Remove the temporary file
+        os.remove(filepath)
+
+        # Return the image as a response
+        return send_file(img, mimetype='image/png')
+
+    except Exception as e:
+        return f"Error processing file: {str(e)}", 400
+        
 if __name__ == "__main__":
     app.run(debug=True)

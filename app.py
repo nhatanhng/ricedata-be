@@ -2,7 +2,7 @@
 import logging
 import traceback
 import os
-from flask import Flask, request, send_file, jsonify
+from flask import Flask, Blueprint, request, send_file, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from models import db, Files, Points, VisualizedImages, RecommendChannels, StatisticalData
@@ -22,9 +22,17 @@ import matplotlib.pyplot as plt
 import specdal
 from io import BytesIO
 
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.serving import run_simple
+
 
 app = Flask(__name__)
 CORS(app, supports_credentials=True)
+
+# Wrap the app under '/api'
+application = DispatcherMiddleware(Flask('dummy_root'), {
+    '/api': app
+})
 
 app.config['SECRET_KEY'] = 'nhatanhng'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///ricedata.db'
@@ -846,4 +854,4 @@ def upload_reflectance_data():
         return f"Error processing file: {str(e)}", 400
         
 if __name__ == "__main__":
-    app.run(debug=True)
+    run_simple('127.0.0.1', 5000, application, use_debugger=True)
